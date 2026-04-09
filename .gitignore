@@ -1,0 +1,31 @@
+﻿# ==========================================
+# Inspection Engine .gitignore
+# ==========================================
+
+# Python Environments
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.class
+.env
+
+# Node.js / React Frontend
+frontend/node_modules/
+frontend/dist/
+.eslintcache
+npm-debug.log*
+
+# AI Datasets & Temp Training Files
+DeepPCB-5/
+runs/detect/inspection_engine_final/
+runs/detect/inspection_engine_final2/
+runs/tests/
+yolo*.pt
+!runs/detect/inspection_engine_final3/weights/best.pt
+
+# OS / Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
