@@ -1,5 +1,5 @@
 @echo off
-set "PROJECT_ROOT=C:\Users\Devansh Tyagi\Desktop\Projects\Inspection Engine"
+set "PROJECT_ROOT=%~dp0"
 title INSPECTION ENGINE MASTER BOOT [V1.2]
 
 echo =======================================================
@@ -9,11 +9,11 @@ echo =======================================================
 
 :: 1. Launch the Backend + AI Eye
 echo [1/3] IGNITING RTX 5060 BACKEND...
-start "BACKEND_ENGINE" cmd /k "cd /d %PROJECT_ROOT% && .\venv\Scripts\activate && cd backend && python -m uvicorn app.main:app --reload"
+start "BACKEND_ENGINE" cmd /k "cd /d "%PROJECT_ROOT:~0,-1%" && .\venv\Scripts\activate && cd backend && python -m uvicorn app.main:app"
 
 :: 2. Launch the Frontend UI
 echo [2/3] STARTING VITE DASHBOARD...
-start "FRONTEND_UI" cmd /k "cd /d %PROJECT_ROOT%\frontend && npm run dev"
+start "FRONTEND_UI" cmd /k "cd /d "%PROJECT_ROOT:~0,-1%\frontend" && npm run dev"
 
 :: 3. Wait for servers to warm up and Auto-Open Browser
 echo [3/3] WAITING FOR PORT 5173...

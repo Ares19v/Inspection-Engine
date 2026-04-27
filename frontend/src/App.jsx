@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // Industrial Color Profiles
 const THEMES = {
@@ -15,7 +15,8 @@ function App() {
   const [fullLogs, setFullLogs] = useState([]); // Stored for PDF Generation
   const [fps, setFps] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
-  
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   const [isCameraActive, setIsCameraActive] = useState(true);
   const [uploadedImage, setUploadedImage] = useState(null);
   
@@ -23,26 +24,25 @@ function App() {
   const lastFrameTime = useRef(Date.now());
   const colors = THEMES[theme];
 
+  // Only open a WebSocket connection when we are actually in live camera mode.
+  // This prevents stale frames bleeding into static analysis mode.
   useEffect(() => {
-    if (!isSystemStarted) return;
+    if (!isSystemStarted || !isCameraActive) return;
 
     const ws = new WebSocket('ws://127.0.0.1:8000/ws');
-    ws.onopen = () => setIsConnected(true);
-    ws.onclose = () => setIsConnected(false);
+    ws.onopen  = () => setIsConnected(true);
+    ws.onclose = () => { setIsConnected(false); setFps(0); };
 
     ws.onmessage = (event) => {
-      if (!isCameraActive) return;
-
       const data = JSON.parse(event.data);
-      
+
       if (videoRef.current) {
-        videoRef.current.src = "data:image/jpeg;base64," + data.image;
+        videoRef.current.src = 'data:image/jpeg;base64,' + data.image;
       }
 
       if (data.defects.length > 0) {
         setDefects(prev => [...new Set([...data.defects, ...prev])].slice(0, 10));
-        
-        // Add to historical logs for the PDF
+
         const time = new Date().toLocaleTimeString();
         data.defects.forEach(d => {
           setFullLogs(prev => {
@@ -60,20 +60,55 @@ function App() {
     return () => ws.close();
   }, [isSystemStarted, isCameraActive]);
 
-  const handleFileUpload = (event) => {
+  const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    setIsSystemStarted(true); // Auto-start if they upload an image
+    setIsSystemStarted(true);
     setIsCameraActive(false);
     setFps(0);
+    setDefects(['AWAITING STATIC ANALYSIS...']);
+    setIsAnalyzing(true);
 
+    // Show the raw preview immediately so the UI feels responsive
     const reader = new FileReader();
-    reader.onload = (e) => {
-      setUploadedImage(e.target.result);
-      setDefects(['AWAITING STATIC ANALYSIS...']); 
-    };
+    reader.onload = (e) => setUploadedImage(e.target.result);
     reader.readAsDataURL(file);
+
+    // POST the file to the backend for YOLO inference
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('http://127.0.0.1:8000/analyze', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+      const data = await response.json();
+
+      // Replace preview with the YOLO-annotated frame
+      setUploadedImage('data:image/jpeg;base64,' + data.image);
+
+      if (data.defects && data.defects.length > 0) {
+        setDefects(data.defects.map(d => d.toUpperCase()));
+        const time = new Date().toLocaleTimeString();
+        data.defects.forEach(d => {
+          setFullLogs(prev => {
+            const entry = `[${time}] STATIC: ${d.toUpperCase()}`;
+            return prev.includes(entry) ? prev : [entry, ...prev];
+          });
+        });
+      } else {
+        setDefects(['NO DEFECTS DETECTED — BOARD CLEAN']);
+      }
+    } catch (err) {
+      setDefects([`ANALYSIS FAILED: ${err.message}`]);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const generatePDF = () => {
@@ -127,7 +162,7 @@ function App() {
           <span style={{ color: isConnected ? colors.ok : colors.err }}>
             {isConnected ? '● WS_CONNECTED' : '● WS_DISCONNECTED'}
           </span>
-          <span style={{ color: '#fbbf24' }}>FPS: {fps}</span>
+          <span style={{ color: '#fbbf24' }}>FPS: {isCameraActive ? fps : 'N/A'}</span>
         </div>
       </header>
 
@@ -141,9 +176,9 @@ function App() {
             <span>TARGET_RES: 640x480</span>
           </div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', position: 'relative' }}>
-            
+
             {!isSystemStarted ? (
-              <button 
+              <button
                 onClick={() => setIsSystemStarted(true)}
                 style={{ padding: '15px 40px', backgroundColor: 'transparent', border: `2px solid ${colors.accent}`, color: colors.accent, fontSize: '18px', letterSpacing: '3px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace' }}
                 onMouseOver={(e) => { e.target.style.backgroundColor = colors.accent; e.target.style.color = colors.bg; }}
@@ -152,12 +187,31 @@ function App() {
                 START SENSOR FEED
               </button>
             ) : (
-              <img 
-                ref={videoRef} 
+              <img
+                ref={videoRef}
                 src={!isCameraActive && uploadedImage ? uploadedImage : undefined}
-                style={{ width: '100%', maxHeight: 'calc(100vh - 160px)', objectFit: 'contain' }} 
+                style={{ width: '100%', maxHeight: 'calc(100vh - 160px)', objectFit: 'contain' }}
                 alt="Scan Feed"
               />
+            )}
+
+            {/* Loading overlay — shown while YOLO processes a static upload */}
+            {isAnalyzing && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: 'rgba(0,0,0,0.75)', gap: '12px',
+              }}>
+                <div style={{
+                  width: '36px', height: '36px', border: `3px solid ${colors.border}`,
+                  borderTop: `3px solid ${colors.accent}`, borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                }} />
+                <span style={{ color: colors.accent, fontFamily: 'monospace', fontSize: '13px', letterSpacing: '3px' }}>
+                  PROCESSING IMAGE...
+                </span>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
             )}
 
           </div>
