@@ -1,0 +1,61 @@
+# ─── Inspection Engine — Docker Compose ─────────────────────────────────────
+#
+# Launches the full stack (backend API + React dashboard) in containers.
+#
+# REQUIREMENTS:
+#   - Docker Desktop or Docker Engine + Compose plugin
+#   - NVIDIA Container Toolkit (for GPU inference):
+#     https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#
+# USAGE:
+#   docker compose up --build          # first run (builds images)
+#   docker compose up                  # subsequent runs
+#   docker compose down                # stop and remove containers
+#
+# NOTE:
+#   Live webcam mode is NOT supported inside Docker (no USB device passthrough
+#   by default). The full HTTP API (/health, /analyze) works perfectly.
+#   For live camera mode, use Run_Inspection_Engine.bat on Windows.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── Backend: FastAPI + YOLO Inference ──────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: inspection_engine_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the trained model weights read-only so they don't bloat the image
+      - ./runs:/app/runs:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    # GPU access — requires NVIDIA Container Toolkit on the host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ── Frontend: Vite/React → nginx ───────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Tells the React app where to find the backend API
+        VITE_API_URL: http://localhost:8000
+    container_name: inspection_engine_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import multiprocessing
@@ -19,7 +20,16 @@ from app.config import (
     AI_RECONNECT_DELAY,
 )
 
-app = FastAPI(title="Inspection Engine", version="1.2")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Spawn the AI Eye subprocess on startup; it is daemon=True so it dies with the server."""
+    p = multiprocessing.Process(target=run_ai_eye, daemon=True)
+    p.start()
+    print("[BACKEND] AI Eye process started.")
+    yield
+    # Nothing explicit to clean up — daemon process exits automatically
+
+app = FastAPI(title="Inspection Engine", version="1.2", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,26 +70,28 @@ manager = ConnectionManager()
 # ---------------------------------------------------------------------------
 class VideoStream:
     def __init__(self):
-        # The MSMF backend in OpenCV (default on Windows) can throw -1072875772 
-        # (MF_E_INVALIDMEDIATYPE) on certain cameras. DSHOW is much more stable, 
-        # so we force DSHOW.
-        self.cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
-        
-        if not self.cap.isOpened():
-            # Fallback to default (MSMF) if DSHOW fails
+        import sys
+        if sys.platform == "win32":
+            # On Windows, DSHOW is far more stable than the default MSMF backend
+            # which can throw -1072875772 (MF_E_INVALIDMEDIATYPE) on some cameras.
+            self.cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+            if not self.cap.isOpened():
+                self.cap = cv2.VideoCapture(CAMERA_INDEX)
+        else:
+            # On Linux/macOS (including Docker), use the default backend (V4L2/AVFoundation)
             self.cap = cv2.VideoCapture(CAMERA_INDEX)
-            
+
         if not self.cap.isOpened():
             raise RuntimeError(
                 f"Camera at index {CAMERA_INDEX} could not be opened. "
                 "Check your USB/webcam connection and try again."
             )
-            
-        # Explicitly request 640x480 which is universally supported to prevent 
-        # invalid media type crashes or black screens on unsupported hardware.
+
+        # Explicitly request 640x480 — universally supported, prevents invalid
+        # media type crashes or black screens on unsupported hardware.
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        
+
         self.ret, self.frame = self.cap.read()
         self.stopped = False
 
@@ -252,11 +264,3 @@ async def websocket_internal(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
 
-# ---------------------------------------------------------------------------
-# STARTUP
-# ---------------------------------------------------------------------------
-@app.on_event("startup")
-async def startup_event():
-    p = multiprocessing.Process(target=run_ai_eye, daemon=True)
-    p.start()
-    print("[BACKEND] AI Eye process started.")

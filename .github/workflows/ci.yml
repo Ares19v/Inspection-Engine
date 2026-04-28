@@ -1,0 +1,44 @@
+name: CI — Backend API Tests
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Run pytest (CPU-only, mocked GPU)
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout code ─────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python ─────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements-ci.txt
+
+      # ── 3. Install lightweight CI dependencies ───────────────────────────
+      # We do NOT install PyTorch/CUDA here — all GPU dependencies are
+      # mocked inside the test suite using sys.modules stubs.
+      - name: Install CI dependencies
+        run: pip install -r backend/requirements-ci.txt
+
+      # ── 4. Run tests ─────────────────────────────────────────────────────
+      - name: Run API tests
+        working-directory: backend
+        run: pytest tests/ -v --tb=short
+
+      # ── 5. Upload test results (always, even on failure) ─────────────────
+      - name: Upload pytest output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: backend/.pytest_cache/
