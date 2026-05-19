@@ -317,3 +317,8 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 <div align="center">
   <sub>Developed as a Final Year B.Tech Computer Science Project by <a href="https://github.com/Ares19v">Devansh Tyagi</a></sub>
 </div>
+
+---
+<p align="center">
+  Made by Devansh Tyagi @ 2026
+</p>
