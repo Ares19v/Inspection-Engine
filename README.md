@@ -322,3 +322,14 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 <p align="center">
   Made by Devansh Tyagi @ 2026
 </p>
+
+## 🤗 Model on Hugging Face
+
+The trained model is available on Hugging Face: [devanshty/Inspection-Engine](https://huggingface.co/devanshty/Inspection-Engine)
+
+### Download
+
+```python
+from huggingface_hub import hf_hub_download
+model_path = hf_hub_download(repo_id='devanshty/Inspection-Engine', filename='best.pt')
+```
