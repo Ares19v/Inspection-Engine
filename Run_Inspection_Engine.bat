@@ -7,9 +7,12 @@ echo   INITIALIZING INDUSTRIAL AI STACK
 echo   LOCATION: %PROJECT_ROOT%
 echo =======================================================
 
+set "ACT_CMD="
+if exist "%PROJECT_ROOT%venv\Scripts\activate.bat" set "ACT_CMD=.\venv\Scripts\activate && "
+
 :: 1. Launch the Backend + AI Eye
-echo [1/3] IGNITING RTX 5060 BACKEND...
-start "BACKEND_ENGINE" cmd /k "cd /d "%PROJECT_ROOT:~0,-1%" && .\venv\Scripts\activate && cd backend && python -m uvicorn app.main:app"
+echo [1/3] IGNITING BACKEND...
+start "BACKEND_ENGINE" cmd /k "cd /d "%PROJECT_ROOT:~0,-1%" && %ACT_CMD%cd backend && python -m uvicorn app.main:app"
 
 :: 2. Launch the Frontend UI
 echo [2/3] STARTING VITE DASHBOARD...
