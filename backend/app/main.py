@@ -5,6 +5,8 @@ import multiprocessing
 import cv2
 import base64
 import json
+import struct
+import time
 import asyncio
 import numpy as np
 from ultralytics import YOLO
@@ -22,14 +24,12 @@ from app.config import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Spawn the AI Eye subprocess on startup; it is daemon=True so it dies with the server."""
     p = multiprocessing.Process(target=run_ai_eye, daemon=True)
     p.start()
     print("[BACKEND] AI Eye process started.")
     yield
-    # Nothing explicit to clean up — daemon process exits automatically
 
-app = FastAPI(title="Inspection Engine", version="1.2", lifespan=lifespan)
+app = FastAPI(title="Inspection Engine", version="1.3", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,9 +38,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
-# CONNECTION MANAGER  (auto-prunes dead connections on every broadcast)
-# ---------------------------------------------------------------------------
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
@@ -53,7 +50,17 @@ class ConnectionManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
 
-    async def broadcast(self, message: str):
+    async def broadcast_bytes(self, data: bytes):
+        dead: list[WebSocket] = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_bytes(data)
+            except Exception:
+                dead.append(connection)
+        for conn in dead:
+            self.active_connections.remove(conn)
+
+    async def broadcast_text(self, message: str):
         dead: list[WebSocket] = []
         for connection in self.active_connections:
             try:
@@ -65,20 +72,14 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# ---------------------------------------------------------------------------
-# MULTI-THREADED CAMERA CLASS
-# ---------------------------------------------------------------------------
 class VideoStream:
     def __init__(self):
         import sys
         if sys.platform == "win32":
-            # On Windows, DSHOW is far more stable than the default MSMF backend
-            # which can throw -1072875772 (MF_E_INVALIDMEDIATYPE) on some cameras.
             self.cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
             if not self.cap.isOpened():
                 self.cap = cv2.VideoCapture(CAMERA_INDEX)
         else:
-            # On Linux/macOS (including Docker), use the default backend (V4L2/AVFoundation)
             self.cap = cv2.VideoCapture(CAMERA_INDEX)
 
         if not self.cap.isOpened():
@@ -87,10 +88,11 @@ class VideoStream:
                 "Check your USB/webcam connection and try again."
             )
 
-        # Explicitly request 640x480 — universally supported, prevents invalid
-        # media type crashes or black screens on unsupported hardware.
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
 
         self.ret, self.frame = self.cap.read()
         self.stopped = False
@@ -102,10 +104,8 @@ class VideoStream:
     def update(self):
         while not self.stopped:
             self.ret, self.frame = self.cap.read()
-            # If the frame failed to read, sleep briefly to avoid pegging the CPU
             if not self.ret:
-                import time
-                time.sleep(0.01)
+                time.sleep(0.005)
 
     def read(self):
         return self.frame if self.ret else None
@@ -114,15 +114,7 @@ class VideoStream:
         self.stopped = True
         self.cap.release()
 
-# ---------------------------------------------------------------------------
-# LIVE AI ENGINE  (runs as a separate multiprocessing.Process)
-# ---------------------------------------------------------------------------
 def run_ai_eye():
-    """
-    Spawned on FastAPI startup. Reads the webcam, runs YOLO inference,
-    and streams annotated frames to /ws_internal with full reconnect recovery.
-    """
-    # Re-import config inside the subprocess (multiprocessing needs it)
     from app.config import (
         WEIGHTS_DIR, CONFIDENCE_THRESHOLD, LIVE_JPEG_QUALITY, AI_RECONNECT_DELAY
     )
@@ -135,7 +127,7 @@ def run_ai_eye():
         print("[AI EYE] Loaded TensorRT engine.")
     elif pt_path.exists():
         model = YOLO(str(pt_path))
-        print("[AI EYE] TensorRT engine not found — loaded PyTorch weights.")
+        print("[AI EYE] TensorRT engine not found - loaded PyTorch weights.")
     else:
         print(f"[AI EYE] FATAL: No model weights found in {WEIGHTS_DIR}")
         return
@@ -149,30 +141,48 @@ def run_ai_eye():
     import websockets
 
     async def stream_proc():
-        while True:                                          # Outer reconnect loop
+        while True:
             try:
                 async with websockets.connect("ws://127.0.0.1:8000/ws_internal") as ws:
                     print("[AI EYE] Connected to internal WebSocket. Streaming...")
+                    encode_params = [cv2.IMWRITE_JPEG_QUALITY, LIVE_JPEG_QUALITY, cv2.IMWRITE_JPEG_OPTIMIZE, 0]
+                    
                     while True:
                         frame = stream.read()
                         if frame is None:
-                            await asyncio.sleep(0.01)
+                            await asyncio.sleep(0.005)
                             continue
 
-                        results   = model(frame, conf=CONFIDENCE_THRESHOLD, verbose=False, device=0)
+                        results = model(frame, conf=CONFIDENCE_THRESHOLD, verbose=False, device=0)
                         annotated = results[0].plot()
 
-                        _, buffer = cv2.imencode(
-                            '.jpg', annotated,
-                            [cv2.IMWRITE_JPEG_QUALITY, LIVE_JPEG_QUALITY]
-                        )
-                        img_str = base64.b64encode(buffer).decode('utf-8')
+                        _, buffer = cv2.imencode('.jpg', annotated, encode_params)
+                        jpeg_bytes = buffer.tobytes()
 
-                        payload = {
-                            "image":   img_str,
-                            "defects": [model.names[int(c)] for c in results[0].boxes.cls]
+                        detections = []
+                        boxes = results[0].boxes
+                        if boxes is not None and len(boxes) > 0:
+                            for box in boxes:
+                                coords = [round(float(x), 1) for x in box.xyxy[0].tolist()]
+                                conf_val = round(float(box.conf[0]), 3)
+                                cls_id = int(box.cls[0])
+                                label = model.names[cls_id]
+                                detections.append({
+                                    "bbox": coords,
+                                    "conf": conf_val,
+                                    "label": label
+                                })
+
+                        metadata = {
+                            "detections": detections,
+                            "defects": [d["label"] for d in detections],
+                            "count": len(detections),
+                            "timestamp": time.time()
                         }
-                        await ws.send(json.dumps(payload))
+                        header_bytes = json.dumps(metadata).encode('utf-8')
+
+                        packet = struct.pack('<HI', len(detections), len(header_bytes)) + header_bytes + jpeg_bytes
+                        await ws.send(packet)
                         await asyncio.sleep(0.001)
 
             except Exception as e:
@@ -181,9 +191,6 @@ def run_ai_eye():
 
     asyncio.run(stream_proc())
 
-# ---------------------------------------------------------------------------
-# STATIC ANALYSIS — lazy-loaded model for one-shot HTTP requests
-# ---------------------------------------------------------------------------
 _static_model: YOLO | None = None
 
 def get_static_model() -> YOLO:
@@ -199,12 +206,8 @@ def get_static_model() -> YOLO:
             raise FileNotFoundError(f"No model weights found in {WEIGHTS_DIR}")
     return _static_model
 
-# ---------------------------------------------------------------------------
-# HTTP ENDPOINTS
-# ---------------------------------------------------------------------------
 @app.get("/health")
 async def health():
-    """Quick liveness check used by the frontend before opening a WebSocket."""
     return {
         "status": "ok",
         "model_dir": str(WEIGHTS_DIR),
@@ -214,11 +217,6 @@ async def health():
 
 @app.post("/analyze")
 async def analyze_image(file: UploadFile = File(...)):
-    """
-    Static analysis endpoint.
-    Accepts a PCB image, runs YOLO inference, and returns an annotated
-    JPEG (Base64) together with a list of detected defect class names.
-    """
     model = get_static_model()
 
     contents = await file.read()
@@ -236,16 +234,32 @@ async def analyze_image(file: UploadFile = File(...)):
         [cv2.IMWRITE_JPEG_QUALITY, STATIC_JPEG_QUALITY]
     )
     img_b64 = base64.b64encode(buffer).decode('utf-8')
-    defects = [model.names[int(c)] for c in results[0].boxes.cls]
 
-    return {"image": img_b64, "defects": defects}
+    detections = []
+    boxes = results[0].boxes
+    if boxes is not None and len(boxes) > 0:
+        for box in boxes:
+            coords = [round(float(x), 1) for x in box.xyxy[0].tolist()]
+            conf_val = round(float(box.conf[0]), 3)
+            cls_id = int(box.cls[0])
+            label = model.names[cls_id]
+            detections.append({
+                "bbox": coords,
+                "conf": conf_val,
+                "label": label
+            })
 
-# ---------------------------------------------------------------------------
-# WEBSOCKET ENDPOINTS
-# ---------------------------------------------------------------------------
+    defects = [d["label"] for d in detections]
+
+    return {
+        "image": img_b64,
+        "defects": defects,
+        "detections": detections,
+        "count": len(detections)
+    }
+
 @app.websocket("/ws")
 async def websocket_frontend(websocket: WebSocket):
-    """Frontend-facing WebSocket. Receives frames broadcast from ws_internal."""
     await manager.connect(websocket)
     try:
         while True:
@@ -255,12 +269,10 @@ async def websocket_frontend(websocket: WebSocket):
 
 @app.websocket("/ws_internal")
 async def websocket_internal(websocket: WebSocket):
-    """Internal WebSocket. AI subprocess pushes frames here; they are broadcast to all frontends."""
     await websocket.accept()
     try:
         while True:
-            data = await websocket.receive_text()
-            await manager.broadcast(data)
+            data = await websocket.receive_bytes()
+            await manager.broadcast_bytes(data)
     except WebSocketDisconnect:
         pass
-

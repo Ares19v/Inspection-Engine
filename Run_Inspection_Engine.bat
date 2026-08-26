@@ -16,8 +16,8 @@ echo [2/3] STARTING VITE DASHBOARD...
 start "FRONTEND_UI" cmd /k "cd /d "%PROJECT_ROOT:~0,-1%\frontend" && npm run dev"
 
 :: 3. Wait for servers to warm up and Auto-Open Browser
-echo [3/3] WAITING FOR PORT 5173...
-timeout /t 5 /nobreak > nul
+echo [3/3] WAITING FOR DASHBOARD SERVER...
+ping -n 6 127.0.0.1 >nul
 echo OPENING DASHBOARD...
 start http://localhost:5173
 
@@ -28,6 +28,5 @@ echo   UI: http://localhost:5173
 echo   API: http://127.0.0.1:8000
 echo -------------------------------------------------------
 echo.
-echo This window will close automatically.
-timeout /t 3 > nul
+ping -n 3 127.0.0.1 >nul
 exit

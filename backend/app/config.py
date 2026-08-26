@@ -1,5 +1,5 @@
 """
-Inspection Engine — Centralized Configuration
+Inspection Engine - Centralized Configuration
 All hardcoded values live here. Change once, reflected everywhere.
 """
 from pathlib import Path

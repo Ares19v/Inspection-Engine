@@ -1,1 +1,1 @@
-# Inspection Engine — Backend Package
+# Inspection Engine - Backend Package
