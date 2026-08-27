@@ -331,4 +331,4 @@ model_path = hf_hub_download(repo_id='devanshty/Inspection-Engine', filename='be
 
 ---
 
-© 2025 Devansh Tyagi (Ares19v). All Rights Reserved.
+© 2026 Devansh Tyagi (Ares19v). All Rights Reserved.
