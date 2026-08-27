@@ -311,12 +311,6 @@ Inspection Engine/
 
 ---
 
-## 📜 License
-
-This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
-
----
-
 <div align="center">
   <sub>Developed as a Final Year B.Tech Computer Science Project by <a href="https://github.com/Ares19v">Devansh Tyagi</a></sub>
 </div>
@@ -336,3 +330,9 @@ The trained model is available on Hugging Face: [devanshty/Inspection-Engine](ht
 from huggingface_hub import hf_hub_download
 model_path = hf_hub_download(repo_id='devanshty/Inspection-Engine', filename='best.pt')
 ```
+
+---
+
+© 2025 Devansh Tyagi (Ares19v). All Rights Reserved.
+
+Unauthorized copying, modification, distribution, or use of this project or any of its components, in whole or in part, without explicit written permission from the author is strictly prohibited.
