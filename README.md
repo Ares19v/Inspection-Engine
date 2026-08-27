@@ -2,6 +2,9 @@
 
 <h1>🏭 Inspection Engine</h1>
 
+
+[![CI](https://github.com/Ares19v/Inspection-Engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Ares19v/Inspection-Engine/actions/workflows/ci.yml)
+
 <p><strong>high-precision Real-Time PCB Defect Detection System</strong></p>
 
 <p>
