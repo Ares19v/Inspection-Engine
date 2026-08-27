@@ -316,9 +316,7 @@ Inspection Engine/
 </div>
 
 ---
-<p align="center">
-  Made by Devansh Tyagi @ 2026
-</p>
+
 
 ## 🤗 Model on Hugging Face
 
