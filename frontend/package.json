@@ -26,5 +26,6 @@
     "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
     "vite": "^8.0.4"
-  }
+  },
+  "description": "Real-time industrial PCB defect detection and solder inspection system powered by YOLO and DeepPCB."
 }

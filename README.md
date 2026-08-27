@@ -2,7 +2,7 @@
 
 <h1>🏭 Inspection Engine</h1>
 
-<p><strong>Industrial-Grade Real-Time PCB Defect Detection System</strong></p>
+<p><strong>high-precision Real-Time PCB Defect Detection System</strong></p>
 
 <p>
   <a href="https://github.com/Ares19v/Inspection-Engine/blob/main/LICENSE">
@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Inference-~12ms-purple.svg" alt="Inference: ~12ms">
 </p>
 
-<p>A production-grade computer vision pipeline for high-speed Printed Circuit Board (PCB) quality control.<br>
+<p>A high-performance computer vision pipeline for high-speed Printed Circuit Board (PCB) quality control.<br>
 Powered by a custom-trained <strong>YOLOv11s</strong> model, a <strong>FastAPI</strong> WebSocket backend, and a <strong>React 19</strong> industrial dashboard.<br>
 Delivering real-time defect detection at <strong>80+ FPS</strong> on NVIDIA Blackwell hardware.</p>
 
