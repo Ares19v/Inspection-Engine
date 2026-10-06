@@ -2,6 +2,7 @@
 Inspection Engine - Centralized Configuration
 All hardcoded values live here. Change once, reflected everywhere.
 """
+import os
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -33,5 +34,5 @@ AI_RECONNECT_DELAY = 3   # Seconds to wait before retrying a dropped WS connecti
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
-BACKEND_HOST = "127.0.0.1"
-BACKEND_PORT = 8000
+BACKEND_HOST = os.getenv("BACKEND_HOST", "127.0.0.1")
+BACKEND_PORT = int(os.getenv("BACKEND_PORT", "38192"))

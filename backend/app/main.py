@@ -116,7 +116,8 @@ class VideoStream:
 
 def run_ai_eye():
     from app.config import (
-        WEIGHTS_DIR, CONFIDENCE_THRESHOLD, LIVE_JPEG_QUALITY, AI_RECONNECT_DELAY
+        WEIGHTS_DIR, CONFIDENCE_THRESHOLD, LIVE_JPEG_QUALITY, AI_RECONNECT_DELAY,
+        BACKEND_HOST, BACKEND_PORT
     )
 
     engine_path = WEIGHTS_DIR / "best.engine"
@@ -143,7 +144,7 @@ def run_ai_eye():
     async def stream_proc():
         while True:
             try:
-                async with websockets.connect("ws://127.0.0.1:8000/ws_internal") as ws:
+                async with websockets.connect(f"ws://{BACKEND_HOST}:{BACKEND_PORT}/ws_internal") as ws:
                     print("[AI EYE] Connected to internal WebSocket. Streaming...")
                     encode_params = [cv2.IMWRITE_JPEG_QUALITY, LIVE_JPEG_QUALITY, cv2.IMWRITE_JPEG_OPTIMIZE, 0]
                     

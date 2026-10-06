@@ -17,6 +17,9 @@ const CLASS_COLORS = {
   'copper': '#3b82f6'
 };
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:38192';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:38192/ws';
+
 function App() {
   const [theme, setTheme] = useState('black');
   const [isSystemStarted, setIsSystemStarted] = useState(false);
@@ -89,7 +92,7 @@ function App() {
   useEffect(() => {
     if (!isSystemStarted || !isCameraActive) return;
 
-    const ws = new WebSocket('ws://127.0.0.1:8000/ws');
+    const ws = new WebSocket(WS_URL);
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => setIsConnected(true);
@@ -218,7 +221,7 @@ function App() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://127.0.0.1:8000/analyze', {
+      const response = await fetch(`${API_URL}/analyze`, {
         method: 'POST',
         body: formData,
       });
